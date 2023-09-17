@@ -1,0 +1,239 @@
+---
+title: "Clustering Analysis of Wholesale Distribution"
+author: "Madison Meinke, Natalia Mendoza-Orr, Cody Ortloff, Claire Tsao, Qianer Wu"
+output: pdf_document
+date: "7/3/2023"
+---
+
+## Load the required packages and data set
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(stats)
+library(cluster)
+library(ggplot2)
+library(factoextra)
+library(knitr)
+
+wholesale <- read.csv("Wholesale_customers_data.csv")
+```
+
+
+## Normalize the data set
+
+
+```{r}
+normalize <- function(x){
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+wholesale_normalized <- wholesale %>% mutate_at(c(3:8), normalize)
+```
+
+
+## Build the distance matrix and look at the dendrogram using hierachical clustering 
+
+
+```{r, out.width="65%"}
+distance_matrix <- dist(wholesale_normalized[,3:8], method = "euclidean")
+
+hierarchical <- hclust(distance_matrix, method = "ward.D")
+
+plot(hierarchical)
+```
+
+
+## Deciding on Cluster Solution Amount (SSE Curve and Silhoutte Scores)
+
+We can see that the "elbow" of the SSE curve is somewhere between 2-8 clusters. The silhouette score appears to have the greatest average value at 2 clusters. However, it is possible for a data set to have a high average silhouette score for a certain number of clusters, but it might not be the most meaningful or informative solution. (1) 
+
+
+```{r, fig.show="hold", out.width="50%"}
+SSE_curve = c()
+for (n in 1:10){
+  kcluster = kmeans(wholesale_normalized[,3:8], centers = n)
+  SSE_curve[n] = kcluster$tot.withinss
+}
+
+plot_data = data.frame(ncluster = 1:10, SSE = SSE_curve)
+ggplot(plot_data, aes(x = ncluster, y = SSE)) +
+  geom_line() + geom_point() + theme_bw()
+
+fviz_nbclust(wholesale_normalized[,3:8], hcut, method='silhouette')
+```
+
+## Deciding on our Cluster Solution Amount (Comparisons) 
+
+We decided that we would start by looking at 3 clusters and work our way up to see if we gain any additional information from adding more clusters.
+
+
+```{r, fig.show="hold", out.width="50%"}
+plot(hierarchical)
+rect.hclust(hierarchical, k = 3)
+
+plot(hierarchical)
+rect.hclust(hierarchical, k = 4)
+```
+As shown in the above dendrograms, the 4th cluster added is a very small one.  We are interested to see if adding the 4th cluster is meaningful or not. We will look at the means for each attribute's spending amount in the cluster solutions for the 3 cluster solution vs the 4 cluster solution:
+
+```{r}
+# 3 cluster solution
+wholesale_normalized$hcluster = cutree(hierarchical, k = 3)
+wholesale_normalized %>% group_by(hcluster) %>% summarize_at(3:8, mean)
+
+# 4 cluster solution
+wholesale_normalized$hcluster = cutree(hierarchical, k = 4)
+wholesale_normalized %>% group_by(hcluster) %>% summarize_at(3:8, mean)
+
+```
+
+It appears meaningful to add the 4th cluster because despite being very small (8 data points), this cluster has the highest average spending for every attribute.
+
+Now, we will check to see if adding a 5th cluster would be meaningful. First Look at the dendrograms of 4 clusters vs 5 clusters:
+
+```{r, fig.show="hold", out.width="50%"}
+plot(hierarchical)
+rect.hclust(hierarchical, k = 4)
+
+plot(hierarchical)
+rect.hclust(hierarchical, k = 5)
+```
+
+As shown, adding a 5th cluster just splits our large cluster into 2 seperate clusters.  We will explore to see if splitting that cluster tells us anything meaningful:
+
+```{r}
+# 4 cluster solution
+wholesale_normalized$hcluster = cutree(hierarchical, k = 4)
+wholesale_normalized %>% group_by(hcluster) %>% summarize_at(3:8, mean)
+
+# 5 cluster solution
+wholesale_normalized$hcluster = cutree(hierarchical, k = 5)
+wholesale_normalized %>% group_by(hcluster) %>% summarize_at(3:8, mean)
+
+```
+
+By adding the 5th cluster, nothing jumps out at us as meaningful new information versus the 4 cluster solution.  As a result, we will revert to using 4 clusters.
+
+## Getting information out of our clusters 
+
+Now that we've decided on 4 clusters, lets investigate the details of our clusters:
+
+```{r echo=FALSE}
+# Set cluster amount back to 4
+wholesale_normalized$hcluster = cutree(hierarchical, k = 4)
+
+hcluster1_region1 <- as.integer(wholesale_normalized %>% filter(Region == 1 & hcluster == 1) %>% summarize(n()))
+hcluster1_region2 <- as.integer(wholesale_normalized %>% filter(Region == 2 & hcluster == 1) %>% summarize(n()))
+hcluster1_region3 <- as.integer(wholesale_normalized %>% filter(Region == 3 & hcluster == 1) %>% summarize(n()))
+hcluster1 <- as.integer(wholesale_normalized %>% filter(hcluster == 1) %>% summarize(n()))
+
+hcluster2_region1 <- as.integer(wholesale_normalized %>% filter(Region == 1 & hcluster == 2) %>% summarize(n()))
+hcluster2_region2 <- as.integer(wholesale_normalized %>% filter(Region == 2 & hcluster == 2) %>% summarize(n()))
+hcluster2_region3 <- as.integer(wholesale_normalized %>% filter(Region == 3 & hcluster == 2) %>% summarize(n()))
+hcluster2 <- as.integer(wholesale_normalized %>% filter(hcluster == 2) %>% summarize(n()))
+
+hcluster3_region1 <- as.integer(wholesale_normalized %>% filter(Region == 1 & hcluster == 3) %>% summarize(n()))
+hcluster3_region2 <- as.integer(wholesale_normalized %>% filter(Region == 2 & hcluster == 3) %>% summarize(n()))
+hcluster3_region3 <- as.integer(wholesale_normalized %>% filter(Region == 3 & hcluster == 3) %>% summarize(n()))
+hcluster3 <- as.integer(wholesale_normalized %>% filter(hcluster == 3) %>% summarize(n()))
+
+hcluster4_region1 <- as.integer(wholesale_normalized %>% filter(Region == 1 & hcluster == 4) %>% summarize(n()))
+hcluster4_region2 <- as.integer(wholesale_normalized %>% filter(Region == 2 & hcluster == 4) %>% summarize(n()))
+hcluster4_region3 <- as.integer(wholesale_normalized %>% filter(Region == 3 & hcluster == 4) %>% summarize(n()))
+hcluster4 <- as.integer(wholesale_normalized %>% filter(hcluster == 4) %>% summarize(n()))
+
+clus1 <- round(c(hcluster1_region1 / hcluster1, hcluster1_region2 / hcluster1, hcluster1_region3 / hcluster1) * 100, 2)
+clus2 <- round(c(hcluster2_region1 / hcluster2, hcluster2_region2 / hcluster2, hcluster2_region3 / hcluster2) * 100, 2)
+clus3 <- round(c(hcluster3_region1 / hcluster3, hcluster3_region2 / hcluster3, hcluster3_region3 / hcluster3) * 100, 2)
+clus4 <- round(c(hcluster4_region1 / hcluster4, hcluster4_region2 / hcluster4, hcluster4_region3 / hcluster4) * 100, 2)
+
+clus_by_reg <- data.frame(Cluster1 = clus1, Cluster2 = clus2, Cluster3 = clus3, Cluster4 = clus4, row.names = c("Lisbon", "Oporto", "Other"))
+
+hcluster1_chan1 <- as.integer(wholesale_normalized %>% filter(Channel == 1 & hcluster == 1) %>% summarize(n()))
+hcluster1_chan2 <- as.integer(wholesale_normalized %>% filter(Channel == 2 & hcluster == 1) %>% summarize(n()))
+
+hcluster2_chan1 <- as.integer(wholesale_normalized %>% filter(Channel == 1 & hcluster == 2) %>% summarize(n()))
+hcluster2_chan2 <- as.integer(wholesale_normalized %>% filter(Channel == 2 & hcluster == 2) %>% summarize(n()))
+
+hcluster3_chan1 <- as.integer(wholesale_normalized %>% filter(Channel == 1 & hcluster == 3) %>% summarize(n()))
+hcluster3_chan2 <- as.integer(wholesale_normalized %>% filter(Channel == 2 & hcluster == 3) %>% summarize(n()))
+
+hcluster4_chan1 <- as.integer(wholesale_normalized %>% filter(Channel == 1 & hcluster == 4) %>% summarize(n()))
+hcluster4_chan2 <- as.integer(wholesale_normalized %>% filter(Channel == 2 & hcluster == 4) %>% summarize(n()))
+
+clu1 <- round(c(hcluster1_chan1 / hcluster1, hcluster1_chan2 / hcluster1) * 100, 2)
+clu2 <- round(c(hcluster2_chan1 / hcluster2, hcluster2_chan2 / hcluster2) * 100, 2)
+clu3 <- round(c(hcluster3_chan1 / hcluster3, hcluster3_chan2 / hcluster3) * 100, 2)
+clu4 <- round(c(hcluster4_chan1 / hcluster4, hcluster4_chan2 / hcluster4) * 100, 2)
+
+clus_by_chan <- data.frame(Cluster1 = clu1, Cluster2 = clu2, Cluster3 = clu3, Cluster4 = clu4, row.names = c("Horeca", "Retail"))
+
+cluster_total <- data.frame(Cluster1 = hcluster1, Cluster2 = hcluster2, Cluster3 = hcluster3, Cluster4 = hcluster4, row.names = c("Total"))
+
+
+
+```
+
+#### Cluster Totals:
+```{r echo=FALSE}
+print(cluster_total)
+```
+
+
+#### Regions by Cluster (Percentage):
+```{r echo=FALSE}
+print(clus_by_reg)
+```
+
+
+#### Channels by Cluster (Percentage):
+```{r echo=FALSE}
+print(clus_by_chan)
+```
+Cluster 1 is dominated by the Hotel, Restaurant, and Cafe (Horeca) industry and based on it's average spending across all attributes is the lowest spending cluster with its key product being Fresh items.
+
+Cluster 2 is also primarily based in the Horeca industry and has key products of Fresh and Frozen. Compared to the other clusters, its spending is on the low-medium side.
+
+Cluster 3 is mostly Retail clients its key products are Milk, Grocery and detergents paper.  It is in the medium spending class across all attributes.
+
+Cluster 4 is a small cluster, but it is the large spenders, blowing away the rest of the clusters for average spending habits.  Similar to 3, its key products are Milk, Grocery, and detergents paper, and mostly in the Retail client range.
+
+
+
+## Correlation Between Attributes within Clusters
+
+We want to look at which products have effects on the other products within each cluster:
+
+#### Cluster 1:
+```{r}
+options(width = 100)
+cluster1 <- wholesale_normalized %>% filter(hcluster == 1)
+round(cor(cluster1[3:8]), 5)
+```
+Noticeably in Cluster 1 is the strong positive correlation between Detergents_Paper and Grocery. This indicates that as spending habits within this cluster goes up for Grocery products, it also tends to increase Detergents_Paper spending habits as well. While we cannot confirm causation, it is an interesting trend to discover.
+
+
+#### Cluster 2:
+```{r}
+cluster2 <- wholesale_normalized %>% filter(hcluster == 2)
+round(cor(cluster2[3:8]), 5)
+```
+There are no two attributes that are evidently strongly correlated in Cluster 2, however it is interesting how weak the correlation Fresh products are with the other products within this cluster.
+
+
+#### Cluster 3:
+```{r}
+cluster3 <- wholesale_normalized %>% filter(hcluster == 3)
+round(cor(cluster3[3:8]), 5)
+```
+Again, in Cluster 3 Grocery and Detergents_Paper appear to be strongly correlated.  
+
+
+#### Cluster 4:
+```{r}
+cluster4 <- wholesale_normalized %>% filter(hcluster == 4)
+round(cor(cluster4[3:8]), 5)
+```
+In Cluster 4, Grocery and Detergents_Paper are even more correlated then the other two clusters we pointed it out in. Also worth noting is the strong negative correlation between Frozen products and Detergents_Paper in this cluster.
